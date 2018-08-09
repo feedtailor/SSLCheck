@@ -29,24 +29,6 @@ https://example.org/
 $ cat sites.txt | sslcheck
 ```
 
-ADVANCED USAGE
---------
-
-SSLCheck can also recoginze [JPX topix data](https://www.jpx.co.jp/markets/statistics-equities/misc/01.html) formatted CSV.
-
-
-### CSV format
-
-```
-日付,コード,銘柄名,市場・商品区分,33業種コード,33業種区分,17業種コード,17業種区分,規模コード,規模区分
-```
-
-### usage
-
-```
-$ cat data.csv | sslcheck
-```
-
 OUTPUT
 ------
 
@@ -68,6 +50,7 @@ http://example.com/	https://example.com/	200	www.example.org	US	Los Angeles	Inte
 - Type of certificate
 
 
-### LICENSE
+LICENSE
+-------
 
 Licensed under The GPLv3 License
