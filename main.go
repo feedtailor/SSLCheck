@@ -27,7 +27,7 @@ import (
 
 const (
 	APP_NAME    = "sslcheck"
-	APP_VERSION = "1.0.0"
+	APP_VERSION = "1.0.1"
 	APP_SITE    = "https://github.com/feedtailor/SSLCheck"
 
 	EXIT_CODE_SUCCESS = 0
@@ -106,30 +106,31 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 	resp, err := httpGet(ssl_url)
 	if err != nil {
 		logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url}).Warnf("Request error: %v", err)
-		if strings.Contains(err.Error(), "Client.Timeout") ||
-			strings.Contains(err.Error(), "i/o timeout") ||
-			strings.Contains(err.Error(), "EOF") ||
-			strings.Contains(err.Error(), "getsockopt: connection refused") ||
-			strings.Contains(err.Error(), "getsockopt: network is unreachable") ||
-			strings.Contains(err.Error(), "read: connection reset by peer") ||
-			strings.Contains(err.Error(), "http: server gave HTTP response to HTTPS client") ||
-			strings.Contains(err.Error(), "tls: internal error") ||
-			strings.Contains(err.Error(), "tls: alert") ||
-			strings.Contains(err.Error(), "tls: oversized record received") ||
-			strings.Contains(err.Error(), "tls: first record does not look like a TLS handshake") {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "Client.Timeout") ||
+			strings.Contains(errMsg, "i/o timeout") ||
+			strings.Contains(errMsg, "EOF") ||
+			strings.Contains(errMsg, "getsockopt: connection refused") ||
+			strings.Contains(errMsg, "getsockopt: network is unreachable") ||
+			strings.Contains(errMsg, "read: connection reset by peer") ||
+			strings.Contains(errMsg, "http: server gave HTTP response to HTTPS client") ||
+			strings.Contains(errMsg, "tls: internal error") ||
+			strings.Contains(errMsg, "tls: alert") ||
+			strings.Contains(errMsg, "tls: oversized record received") ||
+			strings.Contains(errMsg, "tls: first record does not look like a TLS handshake") {
 			return "-1", orig_url
-		} else if strings.Contains(err.Error(), "certificate is valid for") {
+		} else if strings.Contains(errMsg, "certificate is valid for") {
 			return "hostname error", orig_url
-		} else if strings.Contains(err.Error(), "has expired") {
+		} else if strings.Contains(errMsg, "has expired") {
 			return "expired", orig_url
-		} else if strings.Contains(err.Error(), "unknown authority") {
+		} else if strings.Contains(errMsg, "unknown authority") {
 			certInfo := getCertInfo(err.(*url.Error).Err.(x509.UnknownAuthorityError).Cert)
 			if isKnownAuthority(certInfo.IssuerCommonName) {
 				return "unknown authority", ssl_url
 			}
 			return "unknown authority", orig_url
 		} else {
-			return err.Error(), orig_url
+			return errMsg, orig_url
 		}
 	}
 	status := resp.StatusCode
@@ -174,6 +175,9 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 				loc := strings.TrimSpace(content[strings.IndexRune(content, '=')+1:])
 				logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "location": loc}).Info("Redirect: meta refresh")
 				loc = getAbsolutePath(ssl_url, loc)
+				if strings.HasPrefix(strings.ToLower(loc), "https://") {
+					return checkSslEnabled(code, issue, loc)
+				}
 				return strconv.Itoa(status), loc
 			}
 		}
@@ -183,6 +187,9 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 		loc := resp.Header.Get("Location")
 		logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "status": status, "location": loc}).Info("Redirect")
 		loc = getAbsolutePath(ssl_url, loc)
+		if strings.HasPrefix(strings.ToLower(loc), "https://") {
+			return checkSslEnabled(code, issue, loc)
+		}
 		return strconv.Itoa(status), loc
 	default:
 		logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "status": status}).Warn()
@@ -191,7 +198,7 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 }
 
 func getAbsolutePath(url, loc string) string {
-	if !strings.HasPrefix(loc, "http") {
+	if !strings.HasPrefix(strings.ToLower(loc), "http") {
 		if strings.HasPrefix(loc, "/") {
 			loc = url[0:strings.IndexRune(url[9:], '/')+9] + loc
 		} else {
@@ -408,7 +415,6 @@ func main() {
 			exitWithMsg(fmt.Sprintf("%v", err), EXIT_CODE_ERROR)
 		}
 		// for JPX topix format: https://www.jpx.co.jp/markets/statistics-equities/misc/01.html
-		//
 		if len(record) > 10 {
 			code := record[1]
 			issue := record[2]
