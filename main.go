@@ -27,8 +27,10 @@ import (
 
 const (
 	APP_NAME    = "sslcheck"
-	APP_VERSION = "1.0.1"
+	APP_VERSION = "1.0.2"
 	APP_SITE    = "https://github.com/feedtailor/SSLCheck"
+
+	MAX_REDIRECT = 10
 
 	EXIT_CODE_SUCCESS = 0
 	EXIT_CODE_ERROR   = 1
@@ -77,7 +79,8 @@ func processRow(code, issue, orig_url string) (string, string, *CertInfo) {
 	if orig_url == "" {
 		return "", "", nil
 	}
-	st, u := checkSslEnabled(code, issue, orig_url)
+	count := 0
+	st, u := checkSslEnabled(code, issue, orig_url, count)
 
 	var cert *CertInfo
 	if strings.HasPrefix(u, "https://") {
@@ -101,7 +104,7 @@ func processRow(code, issue, orig_url string) (string, string, *CertInfo) {
 	return st, u, cert
 }
 
-func checkSslEnabled(code, issue, orig_url string) (string, string) {
+func checkSslEnabled(code, issue, orig_url string, count int) (string, string) {
 	ssl_url := "https://" + orig_url[strings.Index(orig_url, "://")+3:]
 	resp, err := httpGet(ssl_url)
 	if err != nil {
@@ -175,8 +178,13 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 				loc := strings.TrimSpace(content[strings.IndexRune(content, '=')+1:])
 				logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "location": loc}).Info("Redirect: meta refresh")
 				loc = getAbsolutePath(ssl_url, loc)
+				count++
+				if orig_url == loc || ssl_url == loc || count >= MAX_REDIRECT {
+					logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "status": status, "location": loc}).Warn("Redirect loop: meta refresh")
+					return strconv.Itoa(status), loc
+				}
 				if strings.HasPrefix(strings.ToLower(loc), "https://") {
-					return checkSslEnabled(code, issue, loc)
+					return checkSslEnabled(code, issue, loc, count)
 				}
 				return strconv.Itoa(status), loc
 			}
@@ -187,8 +195,13 @@ func checkSslEnabled(code, issue, orig_url string) (string, string) {
 		loc := resp.Header.Get("Location")
 		logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "status": status, "location": loc}).Info("Redirect")
 		loc = getAbsolutePath(ssl_url, loc)
+		count++
+		if orig_url == loc || ssl_url == loc || count >= MAX_REDIRECT {
+			logger.WithFields(logrus.Fields{"code": code, "issue": issue, "url": ssl_url, "orig_url": orig_url, "status": status, "location": loc}).Warn("Redirect loop")
+			return strconv.Itoa(status), loc
+		}
 		if strings.HasPrefix(strings.ToLower(loc), "https://") {
-			return checkSslEnabled(code, issue, loc)
+			return checkSslEnabled(code, issue, loc, count)
 		}
 		return strconv.Itoa(status), loc
 	default:
